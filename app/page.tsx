@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import {
   LineChart,
   Line,
@@ -79,7 +80,7 @@ export default function Home() {
   if (loading) {
     return (
       <div className="flex h-screen items-center justify-center bg-gray-50">
-        <div className="text-xl text-gray-500 animate-pulse">Scanning Neural Memories...</div>
+        <div className="text-xl text-gray-500 animate-pulse">扫描神经记忆中...</div>
       </div>
     );
   }
@@ -97,7 +98,7 @@ export default function Home() {
             <p className="text-gray-500 mt-1">认知交互分析与进化洞察</p>
           </div>
           <div className="text-sm text-gray-400">
-            v0.1.1 功能更新版
+            v0.1.2 功能更新版
           </div>
         </header>
 
@@ -237,7 +238,11 @@ export default function Home() {
           </div>
           <div className="divide-y divide-gray-50">
             {data.recentSessions.map((session) => (
-              <div key={session.sessionId} className="p-4 hover:bg-gray-50 transition-colors flex items-start gap-4">
+              <Link
+                key={session.sessionId}
+                href={`/sessions/${session.sessionId}`}
+                className="p-4 hover:bg-gray-50 transition-colors flex items-start gap-4 block"
+              >
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-xs font-mono bg-gray-100 text-gray-600 px-2 py-0.5 rounded">
@@ -254,7 +259,7 @@ export default function Home() {
                 <div className="text-right text-xs text-gray-400 whitespace-nowrap">
                   {session.messageCount} 条消息
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         </div>

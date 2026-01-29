@@ -42,6 +42,13 @@ export interface AnalysisResult {
   topTools: ToolStats[];
 }
 
+export interface MessageDetail {
+  role: 'user' | 'assistant';
+  content: string;
+  timestamp: string;
+  tools?: { name: string; input: any }[];
+}
+
 export async function getHistoryOverview(): Promise<AnalysisResult> {
   const stats = {
     totalSessions: 0,
@@ -156,13 +163,11 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
       .map(([date, count]) => ({ date, count }))
       .sort((a, b) => a.date.localeCompare(b.date));
 
-    // Process top skills
     const topSkills: SkillStats[] = Array.from(skillCounts.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
       .slice(0, 10);
 
-    // Process top tools
     const topTools: ToolStats[] = Array.from(toolCounts.entries())
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count)
@@ -182,4 +187,97 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
     console.error("Error reading Claude history:", error);
     return { stats, sessions: [], dailyActivity: [], topSkills: [], topTools: [] };
   }
+}
+
+export async function getSessionDetail(targetSessionId: string) {
+  if (!fs.existsSync(PROJECTS_DIR)) {
+    return null;
+  }
+
+  const projectDirs = fs.readdirSync(PROJECTS_DIR);
+
+  for (const projectDirName of projectDirs) {
+    const fullProjectDirPath = path.join(PROJECTS_DIR, projectDirName);
+    if (!fs.statSync(fullProjectDirPath).isDirectory()) continue;
+
+    const files = fs.readdirSync(fullProjectDirPath);
+    const jsonlFiles = files.filter(f => f.endsWith('.jsonl') && f !== 'sessions-index.json');
+
+    for (const file of jsonlFiles) {
+      const filePath = path.join(fullProjectDirPath, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const lines = content.trim().split('\n');
+
+      let currentSessionId = '';
+      const messages: MessageDetail[] = [];
+
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+          if (!currentSessionId && data.sessionId) currentSessionId = data.sessionId;
+
+          if (currentSessionId === targetSessionId) {
+             const timestamp = data.timestamp || '';
+
+             if (data.type === 'user' || data.role === 'user') {
+                let text = '';
+                // Try multiple paths for content
+                if (data.message?.content) {
+                    text = typeof data.message.content === 'string'
+                        ? data.message.content
+                        : (Array.isArray(data.message.content) && data.message.content.length > 0 && data.message.content[0].text)
+                           ? data.message.content[0].text
+                           : data.display || '';
+                } else if (data.display) {
+                    text = data.display;
+                }
+
+                messages.push({
+                  role: 'user',
+                  content: text,
+                  timestamp
+                });
+             }
+
+             if (data.role === 'assistant') {
+                let text = '';
+                const tools: { name: string; input: any }[] = [];
+
+                if (data.content && Array.isArray(data.content)) {
+                  for (const block of data.content) {
+                    if (block.type === 'text') {
+                      text += block.text;
+                    }
+                    if (block.type === 'tool_use') {
+                      tools.push({
+                        name: block.name,
+                        input: block.input
+                      });
+                    }
+                  }
+                }
+
+                messages.push({
+                  role: 'assistant',
+                  content: text,
+                  timestamp,
+                  tools
+                });
+             }
+          }
+        } catch (e) {
+           // ignore
+        }
+      }
+
+      if (currentSessionId === targetSessionId) {
+        return {
+          sessionId: targetSessionId,
+          projectName: projectDirName.split('-').pop() || projectDirName,
+          messages
+        };
+      }
+    }
+  }
+  return null;
 }
