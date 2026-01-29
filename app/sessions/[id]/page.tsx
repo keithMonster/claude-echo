@@ -84,7 +84,15 @@ export default function SessionDetailPage() {
 
       {/* Message List */}
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
-        {session.messages.map((msg, idx) => (
+        {session.messages
+         .filter(msg => {
+            // Frontend double-check filtering
+            if (msg.role === 'assistant') {
+               return (msg.content && msg.content.trim().length > 0) || (msg.tools && msg.tools.length > 0);
+            }
+            return true;
+         })
+         .map((msg, idx) => (
           <div key={idx} className={`flex gap-4 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
             {/* Avatar */}
             <div className={`w-10 h-10 rounded-full flex items-center justify-center shrink-0 ${

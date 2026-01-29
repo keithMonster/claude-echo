@@ -96,6 +96,7 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
             if (!timestamp && data.timestamp) timestamp = data.timestamp;
 
             if (data.type === 'user' || data.role === 'user') {
+              // ... existing user parsing ...
               messageCount++;
               if (data.message?.content) {
                  lastUserMessage = typeof data.message.content === 'string'
@@ -108,9 +109,10 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
               }
             }
 
-            if (data.role === 'assistant') {
+            // Expanded check for assistant messages
+            if (data.role === 'assistant' || data.type === 'assistant') {
               messageCount++;
-              // Analyze tool usage - CORRECTED PATH: data.message.content
+              // Analyze tool usage
                const contentArray = data.message?.content || data.content;
                if (contentArray && Array.isArray(contentArray)) {
                 for (const block of contentArray) {
@@ -126,7 +128,6 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
                 }
               }
             }
-
           } catch (e) {
             // ignore parse errors
           }

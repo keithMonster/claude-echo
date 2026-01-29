@@ -1,52 +1,45 @@
 const fs = require('fs');
+const path = require('path');
 const readline = require('readline');
+const os = require('os');
 
-const filePath = '/Users/xuke/.claude/projects/-Users-xuke-githubProject-orbit/b5213419-2d38-49f6-80f1-8ee8ffc6a11c.jsonl';
+const baseDir = path.join(os.homedir(), '.claude/projects');
 
-async function analyze() {
-  const fileStream = fs.createReadStream(filePath);
-  const rl = readline.createInterface({
-    input: fileStream,
-    crlfDelay: Infinity
-  });
+async function scan() {
+  const files = [];
 
-  let toolUseFound = 0;
-  let emptyAssistantFound = 0;
-
-  for await (const line of rl) {
-    try {
-      const data = JSON.parse(line);
-
-      // Check for Tool Use
-      if (JSON.stringify(data).includes('tool_use')) {
-           toolUseFound++;
-           if (toolUseFound <= 2) {
-               console.log('--- Tool Use Sample ---');
-               console.log(JSON.stringify(data, null, 2));
-           }
+  function findJsonl(dir) {
+    if (!fs.existsSync(dir)) return;
+    const items = fs.readdirSync(dir);
+    for (const item of items) {
+      const fullPath = path.join(dir, item);
+      if (fs.statSync(fullPath).isDirectory()) {
+         findJsonl(fullPath);
+      } else if (item.endsWith('.jsonl') && item !== 'sessions-index.json') {
+         files.push(fullPath);
       }
+    }
+  }
 
-      // Check for what we thought were "empty" messages
-      if (data.role === 'assistant') {
-          let hasContent = false;
-          // Check message content
-          if (data.message && data.message.content && data.message.content.length > 0) hasContent = true;
-          // Check root content (sometimes data.content)
-          if (data.content && data.content.length > 0) hasContent = true;
+  findJsonl(baseDir);
+  console.log(`Found ${files.length} jsonl files. Searching for tool_use...`);
 
-          if (!hasContent) {
-              emptyAssistantFound++;
-              if (emptyAssistantFound <= 2) {
-                  console.log('--- Empty Assistant Sample ---');
-                  console.log(JSON.stringify(data, null, 2));
-              }
-          }
-      }
+  for (const file of files) {
+    const fileStream = fs.createReadStream(file);
+    const rl = readline.createInterface({ input: fileStream, crlfDelay: Infinity });
 
-    } catch (e) {}
-
-    if (toolUseFound > 2 && emptyAssistantFound > 2) break;
+    for await (const line of rl) {
+        try {
+             const data = JSON.parse(line);
+             // Check for tool_use in raw string form to catch any structure
+             if (JSON.stringify(data).includes('tool_use')) {
+                 console.log('\nFOUND SAMPLE IN: ' + file);
+                 console.log(JSON.stringify(data, null, 2));
+                 process.exit(0);
+             }
+        } catch(e){}
+    }
   }
 }
 
-analyze();
+scan();
