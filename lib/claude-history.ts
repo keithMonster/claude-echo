@@ -110,9 +110,10 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
 
             if (data.role === 'assistant') {
               messageCount++;
-              // Analyze tool usage
-               if (data.content && Array.isArray(data.content)) {
-                for (const block of data.content) {
+              // Analyze tool usage - CORRECTED PATH: data.message.content
+               const contentArray = data.message?.content || data.content;
+               if (contentArray && Array.isArray(contentArray)) {
+                for (const block of contentArray) {
                   if (block.type === 'tool_use') {
                     const toolName = block.name;
                     toolCounts.set(toolName, (toolCounts.get(toolName) || 0) + 1);
@@ -242,9 +243,11 @@ export async function getSessionDetail(targetSessionId: string) {
              if (data.role === 'assistant') {
                 let text = '';
                 const tools: { name: string; input: any }[] = [];
+                // CORRECTED PATH: data.message.content
+                const contentArray = data.message?.content || data.content;
 
-                if (data.content && Array.isArray(data.content)) {
-                  for (const block of data.content) {
+                if (contentArray && Array.isArray(contentArray)) {
+                  for (const block of contentArray) {
                     if (block.type === 'text') {
                       text += block.text;
                     }
