@@ -257,12 +257,15 @@ export async function getSessionDetail(targetSessionId: string) {
                   }
                 }
 
-                messages.push({
-                  role: 'assistant',
-                  content: text,
-                  timestamp,
-                  tools
-                });
+                // Only push if there IS content or tools
+                if (text.trim() || tools.length > 0) {
+                  messages.push({
+                    role: 'assistant',
+                    content: text,
+                    timestamp,
+                    tools
+                  });
+                }
              }
           }
         } catch (e) {
