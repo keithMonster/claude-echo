@@ -83,20 +83,27 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
         const content = fs.readFileSync(filePath, 'utf-8');
         const lines = content.trim().split('\n');
 
-        let messageCount = 0;
-        let lastUserMessage = '';
         let timestamp = '';
         let sessionId = '';
+        let messageCount = 0;
+        let lastUserMessage = '';
 
+        // First pass: extract session metadata (sessionId, timestamp)
+        for (const line of lines) {
+            try {
+                const data = JSON.parse(line);
+                if (!sessionId && data.sessionId) sessionId = data.sessionId;
+                if (!timestamp && data.timestamp) timestamp = data.timestamp;
+                if (sessionId && timestamp) break;
+            } catch(e) {}
+        }
+
+        // Second pass: count messages and tools
         for (const line of lines) {
           try {
             const data = JSON.parse(line);
 
-            if (!sessionId && data.sessionId) sessionId = data.sessionId;
-            if (!timestamp && data.timestamp) timestamp = data.timestamp;
-
             if (data.type === 'user' || data.role === 'user') {
-              // ... existing user parsing ...
               messageCount++;
               if (data.message?.content) {
                  lastUserMessage = typeof data.message.content === 'string'
@@ -210,15 +217,18 @@ export async function getSessionDetail(targetSessionId: string) {
       const content = fs.readFileSync(filePath, 'utf-8');
       const lines = content.trim().split('\n');
 
-      let currentSessionId = '';
+      let currentFileSessionId = '';
       const messages: MessageDetail[] = [];
 
       for (const line of lines) {
         try {
           const data = JSON.parse(line);
-          if (!currentSessionId && data.sessionId) currentSessionId = data.sessionId;
+          if (!currentFileSessionId && data.sessionId) currentFileSessionId = data.sessionId;
 
-          if (currentSessionId === targetSessionId) {
+          // Critical Fix: Use sessionId from the line itself if available, fallback to file guess
+          const lineSessionId = data.sessionId || currentFileSessionId;
+
+          if (lineSessionId === targetSessionId) {
              const timestamp = data.timestamp || '';
 
              if (data.type === 'user' || data.role === 'user') {
@@ -241,10 +251,11 @@ export async function getSessionDetail(targetSessionId: string) {
                 });
              }
 
-             if (data.role === 'assistant') {
+             // Check both role and type just in case
+             if (data.role === 'assistant' || data.type === 'assistant') {
                 let text = '';
                 const tools: { name: string; input: any }[] = [];
-                // CORRECTED PATH: data.message.content
+                // CORRECTED PATH: data.message.content with fallback
                 const contentArray = data.message?.content || data.content;
 
                 if (contentArray && Array.isArray(contentArray)) {
@@ -277,7 +288,8 @@ export async function getSessionDetail(targetSessionId: string) {
         }
       }
 
-      if (currentSessionId === targetSessionId) {
+      // Check if we found ANY messages for this session
+      if (messages.length > 0) {
         return {
           sessionId: targetSessionId,
           projectName: projectDirName.split('-').pop() || projectDirName,

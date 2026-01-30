@@ -84,6 +84,14 @@ export default function SessionDetailPage() {
 
       {/* Message List */}
       <div className="max-w-4xl mx-auto px-4 py-8 space-y-6">
+        {/* DEBUG: Print raw tool count */}
+        {process.env.NODE_ENV === 'development' && (
+           <div className="fixed bottom-4 right-4 bg-black text-white p-2 text-xs z-50 opacity-50 hover:opacity-100">
+              Msgs: {session.messages.length} |
+              Tools: {session.messages.reduce((acc, m) => acc + (m.tools ? m.tools.length : 0), 0)}
+           </div>
+        )}
+
         {session.messages
          .filter(msg => {
             // Frontend double-check filtering
