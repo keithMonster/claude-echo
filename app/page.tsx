@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, ReactNode } from 'react';
 import Link from 'next/link';
 import {
   LineChart,
@@ -19,7 +19,9 @@ import {
   FolderGit2,
   Clock,
   Wrench,
-  Zap
+  Zap,
+  X,
+  Loader2
 } from 'lucide-react';
 
 interface Stats {
@@ -27,6 +29,7 @@ interface Stats {
   totalMessages: number;
   lastActive: string;
   projectCount: number;
+  projects: string[];
 }
 
 interface Session {
@@ -64,6 +67,12 @@ export default function Home() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [loading, setLoading] = useState(true);
 
+  // Modal State
+  const [modalOpen, setModalOpen] = useState(false);
+  const [modalTitle, setModalTitle] = useState('');
+  const [modalContent, setModalContent] = useState<ReactNode>(null);
+  const [loadingModal, setLoadingModal] = useState(false);
+
   useEffect(() => {
     fetch('/api/history')
       .then(res => res.json())
@@ -76,6 +85,71 @@ export default function Home() {
         setLoading(false);
       });
   }, []);
+
+  const handleChartClick = async (clickedData: any, type: 'tool' | 'skill') => {
+    if (!clickedData || !clickedData.activeLabel) return;
+    const name = clickedData.activeLabel;
+
+    setModalOpen(true);
+    setModalTitle(`${type === 'tool' ? '工具' : '技能'}: ${name} 的使用记录`);
+    setModalContent(null);
+    setLoadingModal(true);
+
+    try {
+      const res = await fetch(`/api/search?type=${type}&name=${encodeURIComponent(name)}`);
+      const results = await res.json();
+
+      setModalContent(
+        <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-2">
+          {results.length === 0 ? (
+             <div className="text-gray-500 text-center py-8">未找到相关记录</div>
+          ) : (
+             results.map((r: any) => (
+               <Link href={`/sessions/${r.sessionId}`} key={r.sessionId} className="block p-4 border border-gray-200 rounded-lg hover:bg-blue-50 transition-colors group">
+                  <div className="flex justify-between items-start">
+                    <span className="font-mono text-xs bg-gray-100 text-gray-700 px-2 py-1 rounded group-hover:bg-white">{r.projectName}</span>
+                    <span className="text-xs text-gray-400">{new Date(r.timestamp).toLocaleString()}</span>
+                  </div>
+                  <div className="mt-2 text-sm text-gray-600">
+                    <span className="font-semibold text-gray-900">{r.matchCount}</span> 次调用
+                  </div>
+               </Link>
+             ))
+          )}
+        </div>
+      );
+    } catch (e) {
+      setModalContent(<div className="text-red-500">加载失败，请重试</div>);
+    } finally {
+      setLoadingModal(false);
+    }
+  };
+
+  const handleProjectClick = async () => {
+    setModalOpen(true);
+    setModalTitle('活跃项目列表');
+    setModalContent(null);
+    setLoadingModal(true);
+
+    try {
+      const res = await fetch(`/api/search?type=project`);
+      const projects = await res.json();
+
+      setModalContent(
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-[60vh] overflow-y-auto">
+          {projects.map((p: string) => (
+             <div key={p} className="p-3 border border-gray-200 rounded-lg bg-gray-50 font-mono text-sm text-gray-700 break-all">
+                {p}
+             </div>
+          ))}
+        </div>
+      );
+    } catch (e) {
+      setModalContent(<div className="text-red-500">加载失败</div>);
+    } finally {
+      setLoadingModal(false);
+    }
+  };
 
   if (loading) {
     return (
@@ -98,7 +172,7 @@ export default function Home() {
             <p className="text-gray-500 mt-1">认知交互分析与进化洞察</p>
           </div>
           <div className="text-sm text-gray-400">
-            v0.1.2 功能更新版
+            v0.1.3 交互升级版
           </div>
         </header>
 
@@ -118,6 +192,8 @@ export default function Home() {
             icon={<FolderGit2 className="w-5 h-5 text-purple-500" />}
             label="活跃项目"
             value={data.stats.projectCount}
+            clickable
+            onClick={handleProjectClick}
           />
           <StatCard
             icon={<Clock className="w-5 h-5 text-orange-500" />}
@@ -169,11 +245,17 @@ export default function Home() {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
                 <Wrench className="w-5 h-5 text-gray-400" />
-                常用工具 Top 10
+                常用工具 Top 10 <span className="text-xs font-normal text-gray-400 ml-2">(点击查看详情)</span>
               </h2>
               <div className="h-[300px] w-full">
                 <ResponsiveContainer width="100%" height="100%">
-                  <BarChart data={data.topTools} layout="vertical" margin={{ left: 40 }}>
+                  <BarChart
+                    data={data.topTools}
+                    layout="vertical"
+                    margin={{ left: 40 }}
+                    onClick={(d) => handleChartClick(d, 'tool')}
+                    style={{ cursor: 'pointer' }}
+                  >
                     <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                     <XAxis type="number" hide />
                     <YAxis
@@ -198,12 +280,18 @@ export default function Home() {
             <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
               <h2 className="text-lg font-semibold mb-6 flex items-center gap-2">
                 <Zap className="w-5 h-5 text-gray-400" />
-                常用技能 Top 10
+                常用技能 Top 10 <span className="text-xs font-normal text-gray-400 ml-2">(点击查看详情)</span>
               </h2>
                {data.topSkills && data.topSkills.length > 0 ? (
                 <div className="h-[300px] w-full">
                   <ResponsiveContainer width="100%" height="100%">
-                    <BarChart data={data.topSkills} layout="vertical" margin={{ left: 40 }}>
+                    <BarChart
+                      data={data.topSkills}
+                      layout="vertical"
+                      margin={{ left: 40 }}
+                      onClick={(d) => handleChartClick(d, 'skill')}
+                      style={{ cursor: 'pointer' }}
+                    >
                       <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
                       <XAxis type="number" hide />
                       <YAxis
@@ -265,13 +353,42 @@ export default function Home() {
         </div>
 
       </div>
+
+      {modalOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm" onClick={() => setModalOpen(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl overflow-hidden animate-in fade-in zoom-in duration-200" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-4 border-b border-gray-100 bg-gray-50/50">
+              <h3 className="font-semibold text-lg">{modalTitle}</h3>
+              <button
+                onClick={() => setModalOpen(false)}
+                className="p-2 hover:bg-gray-200 rounded-full transition-colors text-gray-500"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+            <div className="p-6">
+              {loadingModal ? (
+                <div className="flex flex-col items-center justify-center py-12 text-gray-400">
+                  <Loader2 className="w-8 h-8 animate-spin mb-2 text-blue-500" />
+                  <p>Searching...</p>
+                </div>
+              ) : (
+                modalContent
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </main>
   );
 }
 
-function StatCard({ icon, label, value, subtext }: { icon: any, label: string, value: string | number, subtext?: string }) {
+function StatCard({ icon, label, value, subtext, clickable, onClick }: { icon: any, label: string, value: string | number, subtext?: string, clickable?: boolean, onClick?: () => void }) {
   return (
-    <div className="bg-white p-6 rounded-xl shadow-sm border border-gray-100">
+    <div
+      className={`bg-white p-6 rounded-xl shadow-sm border border-gray-100 ${clickable ? 'cursor-pointer hover:border-blue-300 hover:shadow-md transition-all' : ''}`}
+      onClick={onClick}
+    >
       <div className="flex items-start justify-between mb-4">
         <div className="p-2 bg-gray-50 rounded-lg">
           {icon}
