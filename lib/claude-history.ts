@@ -263,23 +263,24 @@ export async function getAllKnowledgeSummaries(): Promise<KnowledgeSummary[]> {
     const dateMatch = content.match(/> Date:\s*(.+)$/m);
     const date = dateMatch ? dateMatch[1].trim() : '';
 
-    // Parse items
+    // Parse items - Improved parsing to detect multiple items by ## headers
     const items: KnowledgeItem[] = [];
-    const blocks = content.split(/^---$/m);
+    const blocks = content.split(/^#{2,3}\s+/m);
     
     for (const block of blocks) {
-      if (!block.trim()) continue;
+      if (!block.trim() || block.startsWith('# Knowledge Extraction Report')) continue;
       
-      const itemTitleMatch = block.match(/^#{2,3}\s+(.+)$/m);
-      if (!itemTitleMatch) continue;
+      const lines = block.split('\n');
+      const itemTitle = lines[0].replace(/💡\s*/, '').trim();
       
-      const itemTitle = itemTitleMatch[1].replace(/💡\s*/, '').trim();
-      
+      // Don't process the header part as an item
+      if (itemTitle.includes('Knowledge Extraction Report')) continue;
+
       const observationMatch = block.match(/-\s+\*\*Observation\*\*:\s*(.+)$/m);
       const ruleMatch = block.match(/-\s+\*\*Rule\*\*:\s*(.+)$/m);
       const scopeMatch = block.match(/-\s+\*\*Scope\*\*:\s*(.+)$/m);
       
-      if (observationMatch || ruleMatch) {
+      if (itemTitle && (observationMatch || ruleMatch)) {
         items.push({
           title: itemTitle,
           observation: observationMatch ? observationMatch[1].trim() : '',
@@ -289,16 +290,18 @@ export async function getAllKnowledgeSummaries(): Promise<KnowledgeSummary[]> {
       }
     }
 
-    const title = items.length > 0 ? items[0].title : 'Untitled Knowledge';
-    const preview = items.length > 0 ? items[0].observation || items[0].rule : '';
+    if (items.length > 0) {
+      const title = items[0].title;
+      const preview = items[0].observation || items[0].rule;
 
-    summaries.push({
-      sessionId,
-      title,
-      preview,
-      date,
-      items
-    });
+      summaries.push({
+        sessionId,
+        title,
+        preview,
+        date,
+        items
+      });
+    }
   }
 
   return summaries.sort((a, b) => b.date.localeCompare(a.date));
