@@ -28,7 +28,8 @@ import {
   Terminal,
   ExternalLink,
   Target,
-  FileText
+  FileText,
+  Calendar
 } from 'lucide-react';
 import { Markdown } from '@/app/components/Markdown';
 
@@ -242,7 +243,11 @@ export default function Home() {
                   <div className="flex justify-between items-start">
                     <div className="flex items-center gap-2">
                       <span className="font-mono text-[10px] bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded group-hover:bg-white">{r.projectName}</span>
-                      {r.knowledge && <Brain className="w-3 h-3 text-amber-500" title="包含知识提取" />}
+                      {r.knowledge && (
+                        <div className="flex items-center" title="包含知识提取">
+                          <Brain className="w-3 h-3 text-amber-500" />
+                        </div>
+                      )}
                     </div>
                     <span className="text-[10px] text-gray-400">{new Date(r.timestamp).toLocaleString()}</span>
                   </div>
@@ -402,8 +407,17 @@ export default function Home() {
             <h1 className="text-3xl font-bold text-gray-900 tracking-tight">Claude Echo</h1>
             <p className="text-gray-500 mt-1">认知交互分析与进化洞察</p>
           </div>
-          <div className="text-sm text-gray-400">
-            v0.2.2 深度洞察版
+          <div className="flex items-center gap-4">
+            <Link
+              href="/dates"
+              className="flex items-center gap-2 px-4 py-2 bg-blue-50 text-blue-600 rounded-lg hover:bg-blue-100 transition-colors font-medium text-sm"
+            >
+              <Calendar className="w-4 h-4" />
+              按日期查看
+            </Link>
+            <div className="text-sm text-gray-400">
+              v0.2.2 深度洞察版
+            </div>
           </div>
         </header>
 

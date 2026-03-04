@@ -89,7 +89,7 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
 
   try {
     if (!fs.existsSync(PROJECTS_DIR)) {
-      return { stats, sessions: [], dailyActivity: [], topSkills: [], topTools: [] };
+      return { stats, recentSessions: [], dailyActivity: [], topSkills: [], topTools: [] };
     }
 
     // Read knowledge files once for efficiency
@@ -105,9 +105,15 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
     stats.totalKnowledge = knowledgeSet.size;
 
     const projectDirs = fs.readdirSync(PROJECTS_DIR);
-    stats.projectCount = projectDirs.length;
 
-    for (const projectDirName of projectDirs) {
+    // 过滤系统目录并统计有效项目数
+    const validProjectDirs = projectDirs.filter(dirName => {
+      const displayName = dirName.split('-').pop() || dirName;
+      return !SYSTEM_DIRS.has(displayName);
+    });
+    stats.projectCount = validProjectDirs.length;
+
+    for (const projectDirName of validProjectDirs) {
       const fullProjectDirPath = path.join(PROJECTS_DIR, projectDirName);
       if (!fs.statSync(fullProjectDirPath).isDirectory()) continue;
 
@@ -233,7 +239,7 @@ export async function getHistoryOverview(): Promise<AnalysisResult> {
 
   } catch (error) {
     console.error("Error reading Claude history:", error);
-    return { stats, sessions: [], dailyActivity: [], topSkills: [], topTools: [] };
+    return { stats, recentSessions: [], dailyActivity: [], topSkills: [], topTools: [] };
   }
 }
 
@@ -317,6 +323,10 @@ export async function getSessionDetail(targetSessionId: string): Promise<Session
   for (const projectDirName of projectDirs) {
     const fullProjectDirPath = path.join(PROJECTS_DIR, projectDirName);
     if (!fs.statSync(fullProjectDirPath).isDirectory()) continue;
+
+    const displayProjectName = projectDirName.split('-').pop() || projectDirName;
+    // 过滤系统目录
+    if (SYSTEM_DIRS.has(displayProjectName)) continue;
 
     const files = fs.readdirSync(fullProjectDirPath);
     const jsonlFiles = files.filter(f => f.endsWith('.jsonl') && f !== 'sessions-index.json');
@@ -422,7 +432,8 @@ export function getProjectsList(): string[] {
   const projectDirs = fs.readdirSync(PROJECTS_DIR);
   return projectDirs
     .filter(dir => fs.statSync(path.join(PROJECTS_DIR, dir)).isDirectory())
-    .map(dir => dir.split('-').pop() || dir);
+    .map(dir => dir.split('-').pop() || dir)
+    .filter(name => !SYSTEM_DIRS.has(name));
 }
 
 export async function searchByToolOrSkill(type: 'tool' | 'skill', name: string) {
@@ -437,6 +448,8 @@ export async function searchByToolOrSkill(type: 'tool' | 'skill', name: string) 
     if (!fs.statSync(fullProjectDirPath).isDirectory()) continue;
 
     const displayProjectName = projectDirName.split('-').pop() || projectDirName;
+    // 过滤系统目录
+    if (SYSTEM_DIRS.has(displayProjectName)) continue;
 
     const files = fs.readdirSync(fullProjectDirPath);
     const jsonlFiles = files.filter(f => f.endsWith('.jsonl') && f !== 'sessions-index.json');
@@ -529,4 +542,212 @@ export async function searchByToolOrSkill(type: 'tool' | 'skill', name: string) 
   }
 
   return results.sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime());
+}
+
+// 系统目录列表（需要过滤）
+const SYSTEM_DIRS = new Set(['sessions']);
+
+// 获取所有可用日期列表
+export async function getAvailableDates(): Promise<string[]> {
+  const dates = new Set<string>();
+
+  if (!fs.existsSync(PROJECTS_DIR)) {
+    return [];
+  }
+
+  const projectDirs = fs.readdirSync(PROJECTS_DIR);
+
+  for (const projectDirName of projectDirs) {
+    // 过滤系统目录
+    const displayProjectName = projectDirName.split('-').pop() || projectDirName;
+    if (SYSTEM_DIRS.has(displayProjectName)) continue;
+
+    const fullProjectDirPath = path.join(PROJECTS_DIR, projectDirName);
+    if (!fs.statSync(fullProjectDirPath).isDirectory()) continue;
+
+    const files = fs.readdirSync(fullProjectDirPath);
+    const jsonlFiles = files.filter(f => f.endsWith('.jsonl') && f !== 'sessions-index.json');
+
+    for (const file of jsonlFiles) {
+      const filePath = path.join(fullProjectDirPath, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const lines = content.trim().split('\n');
+
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+          if (data.timestamp) {
+            const date = new Date(data.timestamp).toISOString().split('T')[0];
+            dates.add(date);
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
+    }
+  }
+
+  return Array.from(dates).sort((a, b) => b.localeCompare(a));
+}
+
+// 日期会话消息（纯文本）
+export interface DateSessionMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+// 日期会话详情
+export interface DateSessionDetail {
+  sessionId: string;
+  timestamp: string;
+  messages: DateSessionMessage[];
+}
+
+// 项目日期数据
+export interface ProjectDayData {
+  projectName: string;
+  sessions: DateSessionDetail[];
+}
+
+// 日期会话响应
+export interface DateSessionsResponse {
+  date: string;
+  projects: ProjectDayData[];
+}
+
+// 根据日期获取当天所有会话的对话文本
+export async function getSessionsByDate(targetDate: string): Promise<DateSessionsResponse> {
+  // targetDate format: "2024-03-04"
+  const projects: Map<string, DateSessionDetail[]> = new Map();
+
+  if (!fs.existsSync(PROJECTS_DIR)) {
+    return { date: targetDate, projects: [] };
+  }
+
+  const projectDirs = fs.readdirSync(PROJECTS_DIR);
+
+  for (const projectDirName of projectDirs) {
+    const fullProjectDirPath = path.join(PROJECTS_DIR, projectDirName);
+    if (!fs.statSync(fullProjectDirPath).isDirectory()) continue;
+
+    const displayProjectName = projectDirName.split('-').pop() || projectDirName;
+    // 过滤系统目录
+    if (SYSTEM_DIRS.has(displayProjectName)) continue;
+
+    const files = fs.readdirSync(fullProjectDirPath);
+    const jsonlFiles = files.filter(f => f.endsWith('.jsonl') && f !== 'sessions-index.json');
+
+    for (const file of jsonlFiles) {
+      const filePath = path.join(fullProjectDirPath, file);
+      const content = fs.readFileSync(filePath, 'utf-8');
+      const lines = content.trim().split('\n');
+
+      let sessionId = '';
+      let sessionTimestamp = '';
+      const messages: DateSessionMessage[] = [];
+      let belongsToTargetDate = false;
+
+      // 第一遍：提取 sessionId、timestamp，并检查是否属于目标日期
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+          if (!sessionId && data.sessionId) sessionId = data.sessionId;
+          if (!sessionTimestamp && data.timestamp) {
+            sessionTimestamp = data.timestamp;
+            const date = new Date(data.timestamp).toISOString().split('T')[0];
+            if (date === targetDate) {
+              belongsToTargetDate = true;
+            }
+          }
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      if (!belongsToTargetDate || !sessionId) continue;
+
+      // 第二遍：提取所有对话文本（只取纯文本，不包含工具调用）
+      for (const line of lines) {
+        try {
+          const data = JSON.parse(line);
+
+          // 用户消息
+          if (data.type === 'user' || data.role === 'user') {
+            let text = '';
+            if (data.message?.content) {
+              text = typeof data.message.content === 'string'
+                ? data.message.content
+                : (Array.isArray(data.message.content) && data.message.content.length > 0 && data.message.content[0].text)
+                  ? data.message.content[0].text
+                  : data.display || '';
+            } else if (data.display) {
+              text = data.display;
+            }
+
+            if (text.trim()) {
+              messages.push({
+                role: 'user',
+                content: text
+              });
+            }
+          }
+
+          // 助手消息（只取文本内容，跳过工具调用）
+          if (data.role === 'assistant' || data.type === 'assistant') {
+            let text = '';
+            const contentArray = data.message?.content || data.content;
+
+            if (contentArray && Array.isArray(contentArray)) {
+              for (const block of contentArray) {
+                if (block.type === 'text' && block.text) {
+                  text += block.text;
+                }
+              }
+            }
+
+            if (text.trim()) {
+              messages.push({
+                role: 'assistant',
+                content: text
+              });
+            }
+          }
+        } catch (e) {
+          // ignore parse errors
+        }
+      }
+
+      if (messages.length > 0) {
+        const sessionDetail: DateSessionDetail = {
+          sessionId,
+          timestamp: sessionTimestamp,
+          messages
+        };
+
+        if (!projects.has(displayProjectName)) {
+          projects.set(displayProjectName, []);
+        }
+        projects.get(displayProjectName)!.push(sessionDetail);
+      }
+    }
+  }
+
+  // 转换为响应格式
+  const result: ProjectDayData[] = [];
+  for (const [projectName, sessions] of projects.entries()) {
+    // 按时间排序会话
+    sessions.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+    result.push({
+      projectName,
+      sessions
+    });
+  }
+
+  // 按项目名称排序
+  result.sort((a, b) => a.projectName.localeCompare(b.projectName));
+
+  return {
+    date: targetDate,
+    projects: result
+  };
 }
